@@ -1,0 +1,15 @@
+{% extends "layout.html" %}
+{% block content %}
+<form action="/upload" method="post" enctype="multipart/form-data">
+  <div class="mb-3">
+    <label class="form-label">Upload CSV/XLSX</label>
+    <input type="file" name="file" class="form-control" required>
+  </div>
+  <button class="btn btn-primary">Import & Categorize</button>
+</form>
+
+
+<a href="{{ url_for('summary') }}" class="btn btn-secondary mt-3">
+  View Summary
+</a>
+{% endblock %}
