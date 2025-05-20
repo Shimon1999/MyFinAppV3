@@ -1,44 +1,63 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey
 from sqlalchemy.orm import relationship
-from datetime import datetime
 from .db import Base
-from passlib.context import CryptContext
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class User(Base):
-    __tablename__ = 'users'
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(150), unique=True, index=True, nullable=False)
-    password_hash = Column(String(128), nullable=False)
-    transactions = relationship('Transaction', back_populates='user')
+    __tablename__ = "users"
+    id          = Column(Integer, primary_key=True, index=True)
+    email       = Column(String, unique=True, index=True, nullable=False)
+    hashed_pw   = Column(String, nullable=False)
+    name        = Column(String, nullable=True)
 
-    @property
-    def is_authenticated(self) -> bool:
-        return True
+    accounts        = relationship("Account", back_populates="user")
+    transactions    = relationship("Transaction", back_populates="user")
+    goals           = relationship("Goal", back_populates="user")
+    budgets         = relationship("Budget", back_populates="user")  # new relationship
 
-    def verify_password(self, password: str) -> bool:
-        return pwd_context.verify(password, self.password_hash)
+class Account(Base):
+    __tablename__ = "accounts"
+    id          = Column(Integer, primary_key=True, index=True)
+    name        = Column(String, nullable=False)
+    user_id     = Column(Integer, ForeignKey("users.id"), nullable=False)
 
-    def set_password(self, password: str):
-        self.password_hash = pwd_context.hash(password)
+    user            = relationship("User", back_populates="accounts")
+    transactions    = relationship("Transaction", back_populates="account")
 
 class Transaction(Base):
-    __tablename__ = 'transactions'
-    id = Column(Integer, primary_key=True, index=True)
-    description = Column(String, nullable=False)
-    mcc = Column(String)
-    amount = Column(Float, nullable=False)
-    date = Column(DateTime, default=datetime.utcnow)
-    currency = Column(String(10), default="AED")
-    category = Column(String)
-    orig_category = Column(String)
-    user_id = Column(Integer, ForeignKey('users.id'))
-    user = relationship('User', back_populates='transactions')
+    __tablename__ = "transactions"
+    id              = Column(Integer, primary_key=True, index=True)
+    date            = Column(Date, nullable=False)
+    description     = Column(String, nullable=False)
+    amount          = Column(Float, nullable=False)
+    category        = Column(String, nullable=False, default="Other")
+    original_cat    = Column(String, nullable=True)
+    user_id         = Column(Integer, ForeignKey("users.id"), nullable=False)
+    account_id      = Column(Integer, ForeignKey("accounts.id"), nullable=False)
 
-class Override(Base):
-    __tablename__ = 'overrides'
-    id = Column(Integer, primary_key=True, index=True)
-    transaction_id = Column(Integer, ForeignKey('transactions.id'), nullable=False)
-    new_category = Column(String, nullable=False)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    user            = relationship("User", back_populates="transactions")
+    account         = relationship("Account", back_populates="transactions")
+
+class CategoryOverride(Base):
+    __tablename__ = "overrides"
+    id          = Column(Integer, primary_key=True, index=True)
+    keyword     = Column(String, unique=True, nullable=False)
+    category    = Column(String, nullable=False)
+
+class Goal(Base):
+    __tablename__ = "goals"
+    id          = Column(Integer, primary_key=True, index=True)
+    name        = Column(String, nullable=False)
+    target      = Column(Float, nullable=False)
+    saved       = Column(Float, default=0.0)
+    user_id     = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    user        = relationship("User", back_populates="goals")
+
+class Budget(Base):
+    __tablename__ = "budgets"
+    id          = Column(Integer, primary_key=True, index=True)
+    category    = Column(String, nullable=False)
+    amount      = Column(Float, nullable=False)
+    user_id     = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    user        = relationship("User", back_populates="budgets")  # new model

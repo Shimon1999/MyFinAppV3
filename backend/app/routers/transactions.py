@@ -1,159 +1,57 @@
-from fastapi import APIRouter, Depends, Request, UploadFile, File, Form, Path as FPath
-from pathlib import Path
-from fastapi.responses import RedirectResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
+from typing import List, Dict
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
-from sqlalchemy import func
-from fastapi.concurrency import run_in_threadpool
-import json
+from ..schemas import TransactionCreate, TransactionRead, TransactionUpdate
+from ..models import Transaction
+from ..dependencies import get_db, get_current_user
+from ..categorize import import_transactions
 
-from ..db import SessionLocal, engine, Base
-from ..models import Transaction, Override, User
-from ..categorize import import_transactions, CATEGORY_KEYWORDS
-from .auth import get_current_user, get_db
+router = APIRouter()
 
-router = APIRouter(tags=["transactions"])
-templates = Jinja2Templates(directory="templates")
-
-# ensure tables are created
-Base.metadata.create_all(bind=engine)
-
-# define a constant upload directory
-UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
-
-@router.get("/")
-async def home(request: Request, current_user: User | None = Depends(get_current_user)):
-    if current_user is None:
-        return RedirectResponse("/login", status_code=303)
-    return templates.TemplateResponse(
-        "upload.html",
-        {
-            "request": request,
-            "current_user": current_user
-        }
-    )
-
-@router.post("/upload")
-async def upload(
-    request: Request,
-    file: UploadFile = File(...),
-    current_user: User | None = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    # enforce authentication
-    if current_user is None:
-        return RedirectResponse("/login", status_code=303)
-
-    # sanitize filename and read raw bytes
-    filename = Path(file.filename).name
-    content = await file.read()
-
-    # attempt to import & categorize from bytes + filename
-    try:
-        df = await run_in_threadpool(import_transactions, content, filename)
-    except Exception as e:
-        import traceback
-        traceback.print_exc()  # logs full stacktrace
-        return templates.TemplateResponse(
-            "upload.html",
-            {
-                "request": request,
-                "current_user": current_user,
-                "error": f"Import failed: {e}"
-            }
-        )
-
-    # persist the DataFrame rows into your DB
+@router.post("/transactions/upload", response_model=Dict[str, int])
+def upload_transactions(file: UploadFile = File(...), db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    contents = file.file.read()
+    df = import_transactions(contents, file.filename)
+    inserted = 0
     for _, row in df.iterrows():
-        tx = Transaction(
-            description    = row["Description"],
-            mcc            = row.get("MCC"),
-            amount         = row["Amount"],
-            date           = row["Date"],
-            currency       = row.get("Currency", "AED"),
-            category       = row["Category"],
-            orig_category  = row["OrigCategory"],
-            user_id        = current_user.id,
+        tr = Transaction(
+            date=row["Date"],
+            description=row["Description"],
+            amount=row["Amount"],
+            category=row["Category"],
+            user_id=current_user.id,
+            account_id=row.get("SourceID") or None
         )
-        db.add(tx)
+        db.add(tr); inserted += 1
     db.commit()
+    return {"inserted": inserted}
 
-    return RedirectResponse("/summary", status_code=303)
+@router.get("/transactions", response_model=List[TransactionRead])
+def list_transactions(start: str = None, end: str = None, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    q = db.query(Transaction).filter(Transaction.user_id == current_user.id)
+    # optional date filtering omitted for brevity
+    return q.all()
 
-@router.get("/summary")
-async def summary(
-    request: Request,
-    db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user),
-):
-    if current_user is None:
-        return RedirectResponse("/login", status_code=303)
+@router.get("/transactions/{tx_id}", response_model=TransactionRead)
+def get_transaction(tx_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    tr = db.query(Transaction).filter(Transaction.id == tx_id, Transaction.user_id == current_user.id).first()
+    if not tr:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return tr
 
-    data = (
-        db.query(Transaction.category, func.sum(Transaction.amount))
-        .filter(Transaction.user_id == current_user.id)
-        .group_by(Transaction.category)
-        .all()
-    )
-    return templates.TemplateResponse(
-        "summary.html",
-        {
-            "request": request,
-            "data": data,
-            "currency": "AED",
-            "current_user": current_user,
-        },
-    )
+@router.put("/transactions/{tx_id}", response_model=TransactionRead)
+def update_transaction(tx_id: int, data: TransactionUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    tr = db.query(Transaction).filter(Transaction.id == tx_id, Transaction.user_id == current_user.id).first()
+    if not tr:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    tr.category = data.category
+    db.commit(); db.refresh(tr)
+    return tr
 
-@router.get("/details/{cat}")
-async def details(
-    request: Request,
-    cat: str = FPath(..., description="Category to display"),
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    if current_user is None:
-        return RedirectResponse("/login", status_code=303)
-
-    txs = (
-        db.query(Transaction)
-        .filter(Transaction.user_id == current_user.id, Transaction.category == cat)
-        .all()
-    )
-    return templates.TemplateResponse(
-        "details.html",
-        {
-            "request": request,
-            "transactions": txs,
-            "category": cat,
-            "categories": CATEGORY_KEYWORDS,
-            "current_user": current_user,
-        },
-    )
-
-@router.post("/override")
-async def override(
-    request: Request,
-    tx_id: int = Form(...),
-    new_cat: str = Form(...),
-    db: Session = Depends(get_db),
-):
-    # we still assume a valid user cookie here
-    o = Override(transaction_id=tx_id, new_category=new_cat)
-    db.add(o)
-    db.query(Transaction).filter(Transaction.id == tx_id).update({"category": new_cat})
-    db.commit()
-
-    # update overrides.json
-    overrides = {}
-    try:
-        with open(Path.home() / "Documents" / "overrides.json") as f:
-            overrides = json.load(f)
-    except:
-        pass
-    tx = db.query(Transaction).get(tx_id)
-    overrides[tx.description.lower()] = new_cat
-    with open(Path.home() / "Documents" / "overrides.json", "w") as f:
-        json.dump(overrides, f, indent=2)
-
-    return JSONResponse({"status": "ok"})
+@router.delete("/transactions/{tx_id}", response_model=dict)
+def delete_transaction(tx_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    tr = db.query(Transaction).filter(Transaction.id == tx_id, Transaction.user_id == current_user.id).first()
+    if not tr:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    db.delete(tr); db.commit()
+    return {"msg": "deleted"}

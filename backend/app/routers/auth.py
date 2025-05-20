@@ -1,63 +1,30 @@
-from fastapi import APIRouter, Depends, Request, Form, status
-from fastapi.responses import RedirectResponse
-from fastapi.templating import Jinja2Templates
+# backend/app/routers/auth.py
+from datetime import timedelta
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from ..db import SessionLocal
+
+from ..schemas import UserCreate, UserRead, Token
 from ..models import User
+from ..dependencies import get_db
+from ..security import create_access_token
+from passlib.context import CryptContext
 
-router = APIRouter(tags=["auth"])
-templates = Jinja2Templates(directory="templates")
+router = APIRouter()
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+@router.post("/register", response_model=UserRead)
+def register(user: UserCreate, db: Session = Depends(get_db)):
+    hashed = pwd_context.hash(user.password)
+    db_user = User(email=user.email, hashed_pw=hashed, name=user.name)
+    db.add(db_user); db.commit(); db.refresh(db_user)
+    return db_user
 
-async def get_current_user(request: Request, db: Session = Depends(get_db)) -> User | None:
-    user_id = request.cookies.get('user')
-    if not user_id:
-        return None
-    return db.query(User).filter(User.id == int(user_id)).first()
-
-@router.get('/register')
-async def register_form(request: Request, current_user: User | None = Depends(get_current_user)):
-    return templates.TemplateResponse('register.html', {"request": request, "current_user": current_user})
-
-@router.post("/register")
-async def register(request: Request, username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
-    if db.query(User).filter_by(username=username).first():
-        return templates.TemplateResponse(
-          "register.html",
-          {
-            "request": request,
-            "error": "That username is already taken.",
-            "current_user": None
-          }
-        )
-    user = User(username=username)
-    user.set_password(password)
-    db.add(user)
-    db.commit()
-    return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
-
-@router.get('/login')
-async def login_form(request: Request, current_user: User | None = Depends(get_current_user)):
-    return templates.TemplateResponse('login.html', {"request": request, "current_user": current_user})
-
-@router.post('/login')
-async def login(request: Request, username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == username).first()
-    if not user or not user.verify_password(password):
-        return templates.TemplateResponse('login.html', {"request": request, "error": "Invalid credentials", "current_user": None})
-    response = RedirectResponse('/', status_code=status.HTTP_303_SEE_OTHER)
-    response.set_cookie(key="user", value=str(user.id))
-    return response
-
-@router.get('/logout')
-async def logout():
-    response = RedirectResponse('/login', status_code=status.HTTP_303_SEE_OTHER)
-    response.delete_cookie(key="user")
-    return response
+@router.post("/login", response_model=Token)
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    db_user = db.query(User).filter(User.email == form_data.username).first()
+    if not db_user or not pwd_context.verify(form_data.password, db_user.hashed_pw):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    access_token = create_access_token({"sub": db_user.email})
+    return {"token": access_token}
