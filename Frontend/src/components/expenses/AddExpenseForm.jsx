@@ -1,38 +1,25 @@
-
 import React, { useState } from "react";
-import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { format } from "date-fns";
-import { CalendarIcon, X } from "lucide-react";
+import { X, ArrowUp, ArrowDown } from "lucide-react";
 import { Transaction } from "@/api/entities";
-import { BarChartHorizontalBig, AlertTriangle } from "lucide-react";
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert"
+import { format } from "date-fns";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 export default function AddExpenseForm({ onClose, onSuccess }) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [transactionType, setTransactionType] = useState("expense"); // "expense" or "income"
   const [formData, setFormData] = useState({
-    date: new Date(),
     amount: "",
-    category: "other", // Default to 'other' for expenses
+    date: format(new Date(), "yyyy-MM-dd"),
+    category: "",
     description: "",
     notes: "",
-    income_type: "not_applicable" // New field
+    income_type: "expected", // Default for income
   });
-  const [isIncome, setIsIncome] = useState(false); // To toggle income_type field
 
-  const categories = [
-    { value: "income", label: "Income" },
+  const expenseCategories = [
     { value: "groceries", label: "Groceries" },
     { value: "dining", label: "Dining" },
     { value: "transport", label: "Transport" },
@@ -43,254 +30,256 @@ export default function AddExpenseForm({ onClose, onSuccess }) {
     { value: "healthcare", label: "Healthcare" },
     { value: "education", label: "Education" },
     { value: "travel", label: "Travel" },
-    { value: "savings", label: "Savings" },
-    { value: "other", label: "Other" },
-    { value: "non_cashflow_income", label: "Non-Cashflow Income", icon: BarChartHorizontalBig },
-    { value: "non_cashflow_expense", label: "Non-Cashflow Expense", icon: BarChartHorizontalBig }
+    { value: "other", label: "Other" }
   ];
-
-  const handleChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    
-    // More advanced handling for category changes
-    if (field === "category") {
-      const isNonCashflow = value === "non_cashflow_income" || value === "non_cashflow_expense";
-      setFormData(prev => ({
-        ...prev,
-        is_non_cashflow: isNonCashflow,
-        income_type: isNonCashflow ? "not_applicable" : prev.income_type
-      }));
-      
-      if (value === "income") {
-        setIsIncome(true);
-        setFormData(prev => ({
-          ...prev, 
-          income_type: prev.income_type === "not_applicable" ? "expected" : prev.income_type
-        }));
-      } else if (value !== "income" && value !== "non_cashflow_income") {
-        setIsIncome(false);
-        setFormData(prev => ({ ...prev, income_type: "not_applicable" }));
-      }
-    }
-    
-    // Handle amount changes
-    if (field === "amount") {
-      const numericAmount = parseFloat(value);
-      setIsIncome(numericAmount > 0);
-      
-      if (numericAmount > 0) {
-        setFormData(prev => ({
-          ...prev,
-          category: prev.category === "non_cashflow_income" ? prev.category : "income",
-          income_type: prev.income_type === "not_applicable" ? "expected" : prev.income_type
-        }));
-      } else {
-        setFormData(prev => ({
-          ...prev,
-          category: prev.category === "income" ? "other" : prev.category,
-          income_type: "not_applicable"
-        }));
-      }
-    }
-  };
-  
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!formData.amount || !formData.description) return;
-
-    setIsSubmitting(true);
-    
-    try {
-      // Amount is taken as is. If it's an expense, user should enter negative or it's handled by category selection.
-      const amount = parseFloat(formData.amount);
-      
-      let payload = {
-        source_id: "manual", // This is just a placeholder - will be assigned server-side
-        date: formData.date.toISOString().slice(0, 10),
-        amount,
-        description: formData.description,
-        category: formData.category,
-        month: formData.date.toISOString().slice(0, 7),
-        currency: "AED" // Add currency to match schema expectations
-      };
-      
-      // Add optional fields only if they have values
-      if (formData.notes) {
-        payload.subcategory = formData.notes;
-      }
-      
-      if (formData.category === "income") {
-        payload.income_type = formData.income_type;
-      }
-      
-      if (formData.category === "non_cashflow_income" || formData.category === "non_cashflow_expense") {
-        payload.is_non_cashflow = true;
-      }
-
-      const transaction = await Transaction.create(payload);
-      
-      onSuccess(transaction);
-    } catch (error) {
-      console.error("Error adding transaction:", error);
-      alert(`Error adding transaction: ${error.message || error}`);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const incomeTypes = [
-      { value: "expected", label: "Expected" },
-      { value: "unexpected", label: "Unexpected" },
+    { value: "expected", label: "Expected Income (Salary, Regular)" },
+    { value: "unexpected", label: "Unexpected Income (Bonus, Gift)" }
   ];
 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    try {
+      let transactionAmount = parseFloat(formData.amount);
+      if (isNaN(transactionAmount) || transactionAmount <= 0) {
+        alert("Please enter a valid positive amount.");
+        return;
+      }
+      
+      if (transactionType === "expense") {
+        transactionAmount = -transactionAmount;
+      }
+      
+      if (transactionType === "expense" && !formData.category) {
+        alert("Please select an expense category.");
+        return;
+      }
+      
+      await Transaction.create({
+        amount: transactionAmount,
+        date: formData.date,
+        description: formData.description,
+        category: transactionType === "income" ? "income" : formData.category,
+        month: formData.date.substring(0, 7),
+        expense_type: transactionType === "expense" ? (formData.category === "other" ? "unexpected" : "expected") : "not_applicable",
+        income_type: transactionType === "income" ? formData.income_type : "not_applicable",
+        source_id: "manual" 
+      });
+      
+      onSuccess();
+    } catch (error) {
+      console.error("Error adding transaction:", error);
+      alert("Failed to save transaction. Please try again.");
+    }
+  };
+
+  const handleInputChange = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleTransactionTypeChange = (type) => {
+    setTransactionType(type);
+    setFormData(prev => ({ 
+      ...prev, 
+      category: "", 
+      income_type: type === "income" ? "expected" : prev.income_type 
+    }));
+  };
+
+  const selectedCategoryLabel = formData.category && transactionType === "expense"
+    ? expenseCategories.find(cat => cat.value === formData.category)?.label 
+    : null;
+    
+  const selectedIncomeTypeLabel = formData.income_type && transactionType === "income"
+    ? incomeTypes.find(type => type.value === formData.income_type)?.label
+    : null;
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 50 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 50 }}
-      transition={{ type: "spring", damping: 25 }}
-      className="p-6 max-w-md w-full mx-auto bg-[var(--surface)] rounded-2xl shadow-xl border border-white/20"
-    >
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-bold text-[var(--text-primary)]">Add Expense</h2>
-        <Button variant="ghost" size="icon" onClick={onClose} className="text-[var(--text-secondary)] hover:bg-white/10 rounded-full">
-          <X className="w-5 h-5" />
+    // Ensure the modal itself can handle height constraints and scrolling if needed
+    <div className="bg-white rounded-2xl w-full max-w-lg flex flex-col max-h-[90vh] sm:max-h-[80vh]">
+      <div className="flex justify-between items-center p-4 sm:p-6 border-b border-gray-200 flex-shrink-0">
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-800">
+          Add Transaction
+        </h2>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onClose}
+          className="text-gray-500 hover:text-gray-700"
+        >
+          <X className="h-5 w-5" />
         </Button>
       </div>
-      
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="amount" className="text-[var(--text-secondary)] text-sm">Amount (AED)</Label>
-            <Input
-              id="amount" type="number" step="0.01" placeholder="0.00 or -0.00"
-              value={formData.amount} onChange={(e) => handleChange("amount", e.target.value)}
-              className="text-lg bg-white/50 backdrop-blur-sm border-white/30 rounded-lg p-3 focus:ring-2 focus:ring-[var(--primary-end)] focus:border-[var(--primary-end)]"
-              required
-            />
+
+      {/* Form content area made scrollable */}
+      <form onSubmit={handleSubmit} className="p-4 sm:p-6 flex-grow overflow-y-auto scrollbar-thin">
+        <div className="mb-4 sm:mb-6">
+          <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-lg">
+            <Button
+              type="button"
+              onClick={() => handleTransactionTypeChange("expense")}
+              className={cn(
+                "flex items-center justify-center gap-2 py-2 transition-all duration-200",
+                transactionType === "expense"
+                  ? "bg-white text-[var(--primary-end)] shadow-sm"
+                  : "bg-transparent text-gray-600 hover:bg-gray-200"
+              )}
+            >
+              <ArrowDown className={cn("h-4 w-4", transactionType === "expense" ? "text-red-500" : "text-gray-400")} />
+              Expense
+            </Button>
+            <Button
+              type="button"
+              onClick={() => handleTransactionTypeChange("income")}
+              className={cn(
+                "flex items-center justify-center gap-2 py-2 transition-all duration-200",
+                transactionType === "income"
+                  ? "bg-white text-[var(--primary-end)] shadow-sm"
+                  : "bg-transparent text-gray-600 hover:bg-gray-200"
+              )}
+            >
+              <ArrowUp className={cn("h-4 w-4", transactionType === "income" ? "text-green-500" : "text-gray-400")} />
+              Income
+            </Button>
           </div>
-          
-          <div className="space-y-2">
-            <Label className="text-[var(--text-secondary)] text-sm">Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="w-full justify-start text-left font-normal bg-white/50 backdrop-blur-sm border-white/30 rounded-lg p-3 hover:bg-white/70 text-[var(--text-primary)]"
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {formData.date ? format(formData.date, "PP") : <span>Pick a date</span>}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0 glass-card border-none shadow-2xl z-[150]">
-                <Calendar
-                  mode="single"
-                  selected={formData.date}
-                  onSelect={(date) => handleChange("date", date)}
-                  initialFocus
-                  className="bg-transparent"
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-        </div>
-        
-        <div className="space-y-2">
-          <Label htmlFor="category" className="text-[var(--text-secondary)] text-sm">Category</Label>
-          <Select value={formData.category} onValueChange={(value) => handleChange("category", value)}>
-            <SelectTrigger id="category" className="bg-white/50 backdrop-blur-sm border-white/30 rounded-lg p-3 text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--primary-end)] focus:border-[var(--primary-end)]">
-              <SelectValue placeholder="Select a category" />
-            </SelectTrigger>
-            <SelectContent className="glass-card border-none shadow-2xl z-[150]">
-              {categories.map(category => (
-                <SelectItem 
-                  key={category.value} 
-                  value={category.value} 
-                  className={cn(
-                    "hover:!bg-[var(--primary-start)]/30 focus:!bg-[var(--primary-start)]/40",
-                    category.value.includes('non_cashflow') && "border-t border-gray-200 mt-2 pt-2"
-                  )}
-                >
-                  <div className="flex items-center">
-                    {category.icon && <category.icon className="w-4 h-4 mr-2 text-gray-500" />}
-                    {category.label}
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
 
-        {formData.category.includes('non_cashflow') && (
-          <Alert className="bg-amber-50 border-amber-200 text-amber-700">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              Non-cashflow transactions won't be counted in your budget summaries or cash flow calculations.
-            </AlertDescription>
-          </Alert>
-        )}
-        
-        {isIncome && formData.category === "income" && (
-          <div className="space-y-2">
-            <Label htmlFor="income_type" className="text-[var(--text-secondary)] text-sm">Income Type</Label>
-            <Select value={formData.income_type} onValueChange={(value) => handleChange("income_type", value)}>
-              <SelectTrigger id="income_type" className="bg-white/50 backdrop-blur-sm border-white/30 rounded-lg p-3 text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--primary-end)] focus:border-[var(--primary-end)]">
-                <SelectValue placeholder="Select income type" />
-              </SelectTrigger>
-              <SelectContent className="glass-card border-none shadow-2xl z-[150]">
-                {incomeTypes.map(type => (
-                  <SelectItem key={type.value} value={type.value} className="hover:!bg-[var(--primary-start)]/30 focus:!bg-[var(--primary-start)]/40 text-[var(--text-primary)]">
-                    {type.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <div className="space-y-4 sm:space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Amount (AED)
+            </label>
+            <Input
+              type="number"
+              value={formData.amount}
+              onChange={(e) => handleInputChange("amount", e.target.value)}
+              placeholder="0.00"
+              required
+              step="0.01"
+              min="0.01" // Ensure positive amount is entered
+              className="text-lg"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Enter a positive amount. It will be stored appropriately based on type.
+            </p>
           </div>
-        )}
-        
-        <div className="space-y-2">
-          <Label htmlFor="description" className="text-[var(--text-secondary)] text-sm">Description</Label>
-          <Input
-            id="description"
-            placeholder="E.g., Grocery shopping at Carrefour"
-            value={formData.description}
-            onChange={(e) => handleChange("description", e.target.value)}
-            className="bg-white/50 backdrop-blur-sm border-white/30 rounded-lg p-3 focus:ring-2 focus:ring-[var(--primary-end)] focus:border-[var(--primary-end)]"
-            required
-          />
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Date
+            </label>
+            <Input
+              type="date"
+              value={formData.date}
+              onChange={(e) => handleInputChange("date", e.target.value)}
+              required
+              className="text-base"
+            />
+          </div>
+
+          {transactionType === "expense" && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Expense Category
+              </label>
+              <Select
+                value={formData.category}
+                onValueChange={(value) => handleInputChange("category", value)}
+                required={transactionType === "expense"}
+              >
+                <SelectTrigger className="text-base">
+                  <SelectValue placeholder="Select an expense category">
+                    {selectedCategoryLabel}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {expenseCategories.map(category => (
+                    <SelectItem key={category.value} value={category.value} className="text-base">
+                      {category.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {transactionType === "income" && (
+             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Income Type
+              </label>
+              <Select
+                value={formData.income_type}
+                onValueChange={(value) => handleInputChange("income_type", value)}
+                required={transactionType === "income"}
+              >
+                <SelectTrigger className="text-base">
+                  <SelectValue placeholder="Select an income type">
+                    {selectedIncomeTypeLabel}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {incomeTypes.map(type => (
+                    <SelectItem key={type.value} value={type.value} className="text-base">
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Description
+            </label>
+            <Input
+              value={formData.description}
+              onChange={(e) => handleInputChange("description", e.target.value)}
+              placeholder="E.g., Groceries, Dinner with friends"
+              required
+              className="text-base"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Notes (Optional)
+            </label>
+            <Textarea
+              value={formData.notes}
+              onChange={(e) => handleInputChange("notes", e.target.value)}
+              placeholder="Any additional details..."
+              rows={2}
+              className="text-base"
+            />
+          </div>
         </div>
-        
-        <div className="space-y-2">
-          <Label htmlFor="notes" className="text-[var(--text-secondary)] text-sm">Notes (Optional)</Label>
-          <Textarea
-            id="notes"
-            placeholder="Any additional details..."
-            value={formData.notes}
-            onChange={(e) => handleChange("notes", e.target.value)}
-            rows={3}
-            className="bg-white/50 backdrop-blur-sm border-white/30 rounded-lg p-3 focus:ring-2 focus:ring-[var(--primary-end)] focus:border-[var(--primary-end)]"
-          />
-        </div>
-        
-        <div className="flex gap-3 pt-2">
+      </form>
+      
+      {/* Footer with action buttons - remains fixed */}
+      <div className="p-4 sm:p-6 border-t border-gray-200 flex-shrink-0">
+        <div className="flex gap-3">
           <Button
             type="button"
             variant="outline"
-            className="flex-1 bg-white/50 backdrop-blur-sm border-white/30 rounded-lg p-3 hover:bg-white/70 text-[var(--text-secondary)]"
+            className="flex-1 py-2.5 text-base"
             onClick={onClose}
-            disabled={isSubmitting}
           >
             Cancel
           </Button>
           <Button
-            type="submit"
-            className="flex-1 btn-gradient btn-gradient-primary"
-            disabled={isSubmitting}
+            type="submit" 
+            form="add-transaction-form" // Link to the form ID (needs to be added to form tag)
+            className="flex-1 py-2.5 text-base bg-gradient-to-r from-[var(--primary-start)] to-[var(--primary-end)] text-white"
+            onClick={handleSubmit} // Directly call handleSubmit here because the button is outside the form now.
           >
-            {isSubmitting ? "Adding..." : "Add Expense"}
+            {transactionType === "expense" ? "Add Expense" : "Add Income"}
           </Button>
         </div>
-      </form>
-    </motion.div>
+      </div>
+    </div>
   );
 }

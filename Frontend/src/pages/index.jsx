@@ -24,8 +24,6 @@ import Register from "./Register";
 
 import Documentation from "./Documentation";
 
-import ExportGuide from "./ExportGuide";
-
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 
 const PAGES = {
@@ -53,8 +51,6 @@ const PAGES = {
     Register: Register,
     
     Documentation: Documentation,
-    
-    ExportGuide: ExportGuide,
     
 }
 
@@ -106,8 +102,6 @@ function PagesContent() {
                 <Route path="/Register" element={<Register />} />
                 
                 <Route path="/Documentation" element={<Documentation />} />
-                
-                <Route path="/ExportGuide" element={<ExportGuide />} />
                 
             </Routes>
         </Layout>
