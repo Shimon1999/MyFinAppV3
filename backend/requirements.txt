@@ -10,3 +10,4 @@ rapidfuzz
 joblib
 python-jose[cryptography]
 openpyxl
+email-validator

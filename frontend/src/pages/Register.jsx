@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useForm } from "react-hook-form";
-import { User } from "@/api/entities";
+import { register as registerUser } from "@/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +18,7 @@ export default function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const {
-    register,
+    register: formRegister,
     handleSubmit,
     watch,
     formState: { errors, isValid },
@@ -30,14 +30,16 @@ export default function RegisterPage() {
     setIsLoading(true);
     setApiError(null);
     try {
-      // Use the SDK's registerWithEmailAndPassword method
-      await User.registerWithEmailAndPassword(data.email, data.password, {
-        full_name: data.username, // Pass username as additional data
+      await registerUser({
+        email: data.email,
+        password: data.password,
+        name: data.name,
       });
-      // After successful registration, navigate to the onboarding page
       navigate(createPageUrl("Onboarding"));
     } catch (error) {
-      setApiError(error.message || "Registration failed. Please try again.");
+      const msg =
+        error.response?.data?.detail || error.message || "Registration failed.";
+      setApiError(msg);
       console.error("Registration error:", error);
     } finally {
       setIsLoading(false);
@@ -53,7 +55,8 @@ export default function RegisterPage() {
     pattern: {
       // Requires 1 uppercase, 1 lowercase, 1 number, 1 special character
       value: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
-      message: "Password must include uppercase, lowercase, number, and special character",
+      message:
+        "Password must include uppercase, lowercase, number, and special character",
     },
   };
 
@@ -61,30 +64,39 @@ export default function RegisterPage() {
     <AuthLayout title="Create your account">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         {apiError && (
-          <Alert variant="destructive" className="bg-red-50 border-red-200 text-red-700">
+          <Alert
+            variant="destructive"
+            className="bg-red-50 border-red-200 text-red-700"
+          >
             <AlertTriangle className="h-4 w-4 !text-red-600" />
             <AlertDescription>{apiError}</AlertDescription>
           </Alert>
         )}
         <div>
-          <Label htmlFor="username" className="text-[var(--text-secondary)]">Username</Label>
+          <Label htmlFor="name" className="text-[var(--text-secondary)]">
+            Name
+          </Label>
           <Input
-            id="username"
+            id="name"
             type="text"
-            {...register("username", { required: "Username is required" })}
+            {...formRegister("name", { required: "Name is required" })}
             className="mt-1 bg-white/80 rounded-lg p-3 focus:ring-2 focus:ring-[var(--primary-end)] focus:border-[var(--primary-end)]"
-            aria-invalid={errors.username ? "true" : "false"}
+            aria-invalid={errors.name ? "true" : "false"}
           />
-          {errors.username && (
-            <p className="text-xs text-red-600 mt-1">{errors.username.message}</p>
+          {errors.name && (
+            <p className="text-xs text-red-600 mt-1">
+              {errors.name.message}
+            </p>
           )}
         </div>
         <div>
-          <Label htmlFor="email" className="text-[var(--text-secondary)]">Email</Label>
+          <Label htmlFor="email" className="text-[var(--text-secondary)]">
+            Email
+          </Label>
           <Input
             id="email"
             type="email"
-            {...register("email", {
+            {...formRegister("email", {
               required: "Email is required",
               pattern: {
                 value: /^\S+@\S+$/i,
@@ -95,16 +107,20 @@ export default function RegisterPage() {
             aria-invalid={errors.email ? "true" : "false"}
           />
           {errors.email && (
-            <p className="text-xs text-red-600 mt-1">{errors.email.message}</p>
+            <p className="text-xs text-red-600 mt-1">
+              {errors.email.message}
+            </p>
           )}
         </div>
         <div>
-          <Label htmlFor="password" className="text-[var(--text-secondary)]">Password</Label>
+          <Label htmlFor="password" className="text-[var(--text-secondary)]">
+            Password
+          </Label>
           <div className="relative">
             <Input
               id="password"
               type={showPassword ? "text" : "password"}
-              {...register("password", passwordValidation)}
+              {...formRegister("password", passwordValidation)}
               className="mt-1 bg-white/80 rounded-lg p-3 focus:ring-2 focus:ring-[var(--primary-end)] focus:border-[var(--primary-end)]"
               aria-invalid={errors.password ? "true" : "false"}
             />
@@ -117,16 +133,23 @@ export default function RegisterPage() {
             </button>
           </div>
           {errors.password && (
-            <p className="text-xs text-red-600 mt-1">{errors.password.message}</p>
+            <p className="text-xs text-red-600 mt-1">
+              {errors.password.message}
+            </p>
           )}
         </div>
         <div>
-          <Label htmlFor="confirmPassword" className="text-[var(--text-secondary)]">Confirm Password</Label>
-           <div className="relative">
+          <Label
+            htmlFor="confirmPassword"
+            className="text-[var(--text-secondary)]"
+          >
+            Confirm Password
+          </Label>
+          <div className="relative">
             <Input
               id="confirmPassword"
               type={showConfirmPassword ? "text" : "password"}
-              {...register("confirmPassword", {
+              {...formRegister("confirmPassword", {
                 required: "Please confirm your password",
                 validate: (value) =>
                   value === password || "Passwords do not match",
@@ -157,7 +180,10 @@ export default function RegisterPage() {
         </Button>
         <p className="text-center text-sm text-[var(--text-secondary)]">
           Already have an account?{" "}
-          <Link to={createPageUrl("Login")} className="font-medium text-[var(--primary-end)] hover:underline">
+          <Link
+            to={createPageUrl("Login")}
+            className="font-medium text-[var(--primary-end)] hover:underline"
+          >
             Log in
           </Link>
         </p>

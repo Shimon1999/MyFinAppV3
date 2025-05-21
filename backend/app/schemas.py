@@ -1,4 +1,3 @@
-# backend/app/schemas.py
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List, Dict
 from datetime import date
@@ -73,29 +72,50 @@ class CategoryOverrideRead(CategoryOverrideBase):
 # Goal schemas
 class GoalBase(BaseModel):
     name: str
-    target: float
+    target_amount: float
+    current_amount: float = 0.0
+    color: Optional[str] = None
+    icon: Optional[str] = None
+    target_date: Optional[date] = None
 
 class GoalCreate(GoalBase):
     pass
 
+
+class GoalUpdate(BaseModel):
+    name: Optional[str] = None
+    target_amount: Optional[float] = None
+    current_amount: Optional[float] = None
+    color: Optional[str] = None
+    icon: Optional[str] = None
+    target_date: Optional[date] = None
+
+# GoalFunds schema
+class GoalFunds(BaseModel):
+    amount: float
+
 class GoalRead(GoalBase):
     id: int
-    saved: float
     user_id: int
 
     class Config:
         orm_mode = True
 
-class GoalFunds(BaseModel):
-    amount: float
-
 # Budget schemas
 class BudgetBase(BaseModel):
+    year: int
+    month: int
     category: str
     amount: float
 
 class BudgetCreate(BudgetBase):
     pass
+
+class BudgetUpdate(BaseModel):
+    year: Optional[int] = None
+    month: Optional[int] = None
+    category: Optional[str] = None
+    amount: Optional[float] = None
 
 class BudgetRead(BudgetBase):
     id: int
@@ -103,9 +123,6 @@ class BudgetRead(BudgetBase):
 
     class Config:
         orm_mode = True
-
-class BudgetUpdate(BaseModel):
-    amount: float
 
 # Reporting schemas
 class SummaryReport(BaseModel):

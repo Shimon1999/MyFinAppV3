@@ -5,7 +5,8 @@ import { PiggyBank, Plus, Settings2 } from "lucide-react";
 import { motion } from "framer-motion";
 import GoalCard from "../components/goals/GoalCard";
 import AddGoalModal from "../components/goals/AddGoalModal";
-import { ToastProvider, useToast } from "../components/ui/toast";
+import { ToastProvider } from "@/components/ui/toast";
+import { useToast }      from "@/components/ui/use-toast";
 
 function GoalsContent() {
   const [goals, setGoals] = useState([]);

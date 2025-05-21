@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from .db import Base
 
@@ -12,7 +12,7 @@ class User(Base):
     accounts        = relationship("Account", back_populates="user")
     transactions    = relationship("Transaction", back_populates="user")
     goals           = relationship("Goal", back_populates="user")
-    budgets         = relationship("Budget", back_populates="user")  # new relationship
+    budgets         = relationship("Budget", back_populates="user")
 
 class Account(Base):
     __tablename__ = "accounts"
@@ -45,19 +45,28 @@ class CategoryOverride(Base):
 
 class Goal(Base):
     __tablename__ = "goals"
-    id          = Column(Integer, primary_key=True, index=True)
-    name        = Column(String, nullable=False)
-    target      = Column(Float, nullable=False)
-    saved       = Column(Float, default=0.0)
-    user_id     = Column(Integer, ForeignKey("users.id"), nullable=False)
+    id              = Column(Integer, primary_key=True, index=True)
+    user_id         = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name            = Column(String, nullable=False)
+    target_amount   = Column(Float, nullable=False)
+    current_amount  = Column(Float, default=0.0, nullable=False)
+    color           = Column(String, nullable=True)
+    icon            = Column(String, nullable=True)
+    target_date     = Column(Date, nullable=True)
 
-    user        = relationship("User", back_populates="goals")
+    user            = relationship("User", back_populates="goals")
 
 class Budget(Base):
     __tablename__ = "budgets"
     id          = Column(Integer, primary_key=True, index=True)
+    user_id     = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    year        = Column(Integer, nullable=False)
+    month       = Column(Integer, nullable=False)
     category    = Column(String, nullable=False)
     amount      = Column(Float, nullable=False)
-    user_id     = Column(Integer, ForeignKey("users.id"), nullable=False)
 
-    user        = relationship("User", back_populates="budgets")  # new model
+    __table_args__ = (
+        UniqueConstraint("user_id", "year", "month", "category", name="uix_budget_user_month_cat"),
+    )
+
+    user        = relationship("User", back_populates="budgets")

@@ -14,7 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 
-import AddExpenseForm from "./components/expenses/AddExpenseForm";
+import AddExpenseForm from "@/components/expenses/AddExpenseForm";
 import { TransactionSource } from "@/api/entities";
 
 export default function Layout({ children, currentPageName }) {

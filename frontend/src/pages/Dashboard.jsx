@@ -1,10 +1,8 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { User } from "@/api/entities";
-import { Budget } from "@/api/entities";
 import { Transaction } from "@/api/entities";
 import { FinancialGoal } from "@/api/entities";
-import { UserPreference } from "@/api/entities";
 import { TransactionSource } from "@/api/entities";
 import { format, subMonths, addMonths, parseISO } from "date-fns";
 import { Plus, Share2, Download, Edit, AlertTriangle, BarChartHorizontalBig, CreditCard, ChevronRight, ChevronDown } from "lucide-react";
@@ -13,7 +11,9 @@ import { createPageUrl } from "@/utils";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ToastProvider, useToast } from "../components/ui/toast";
+
+import { ToastProvider } from "@/components/ui/toast";
+import { useToast }      from "@/components/ui/use-toast";
 
 import CategoryCard from "../components/dashboard/CategoryCard";
 import GoalCard from "../components/dashboard/GoalCard";
